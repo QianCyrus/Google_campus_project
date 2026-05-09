@@ -9,6 +9,7 @@ Browser-based Boids flock simulation for the assignment **Boidsアルゴリズ�
 - Modes: Idle, Follow, Gather, Scatter
 - Mouse, keyboard, buttons, and sliders
 - Optional browser-side camera gesture control with MediaPipe Hand Landmarker
+- Live camera background generated from the local camera stream
 - Node.js server ready for Google Cloud Run
 - Unit tests for the Boids algorithm
 
@@ -49,6 +50,7 @@ npm test
 | S | Scatter |
 | Sliders | Adjust birds, speed, and perception radius |
 | Camera button | Toggle browser-side hand tracking |
+| Camera BG button | Toggle live camera background |
 
 Camera control requires HTTPS or localhost. Cloud Run provides HTTPS by default. Video is processed in the browser and is not sent to the Node.js server.
 

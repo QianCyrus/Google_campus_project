@@ -1,15 +1,18 @@
 import { Vector, createFlock, resizeFlock, simulateStep } from "./boids.js";
+import { calculateCoverCrop } from "./cameraParticles.js";
 import { createControls } from "./controls.js";
+import { GestureParticleCloud } from "./gestureParticles.js";
 import { HandTrackingController } from "./handTracking.js";
 
 const canvas = document.querySelector("#flockCanvas");
 const targetMarker = document.querySelector("#targetMarker");
 const cameraPreview = document.querySelector("#cameraPreview");
+const appShell = document.querySelector(".app-shell");
 const context = canvas.getContext("2d", { alpha: false });
 
 const DEFAULT_BIRD_COUNT = 80;
 const DPR_CAP = 1.5;
-const CAMERA_DPR_CAP = 1.15;
+const CAMERA_DPR_CAP = 1.5;
 
 const state = {
   width: window.innerWidth,
@@ -20,6 +23,7 @@ const state = {
   maxSpeed: 3.2,
   perceptionRadius: 70,
   cameraEnabled: false,
+  cameraBackground: false,
   target: new Vector(window.innerWidth * 0.52, window.innerHeight * 0.56),
   lastFrame: performance.now(),
   fpsTime: performance.now(),
@@ -31,6 +35,7 @@ let boids = createFlock(state.birdCount, state.width, state.height, {
   maxSpeed: state.maxSpeed,
   perceptionRadius: state.perceptionRadius
 });
+const gestureCloud = new GestureParticleCloud();
 
 function resizeCanvas() {
   state.width = window.innerWidth;
@@ -41,6 +46,7 @@ function resizeCanvas() {
   canvas.style.width = `${state.width}px`;
   canvas.style.height = `${state.height}px`;
   context.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  gestureCloud.resize(state.width, state.height);
 
   if (state.target.x === 0 && state.target.y === 0) {
     state.target = new Vector(state.width / 2, state.height / 2);
@@ -60,6 +66,8 @@ function applyBoidParameters() {
 function updateTargetMarker() {
   targetMarker.style.left = `${state.target.x}px`;
   targetMarker.style.top = `${state.target.y}px`;
+  appShell.style.setProperty("--target-x", `${state.target.x}px`);
+  appShell.style.setProperty("--target-y", `${state.target.y}px`);
   targetMarker.classList.toggle("idle", state.mode === "idle");
   targetMarker.classList.toggle("gather", state.mode === "gather");
   targetMarker.classList.toggle("scatter", state.mode === "scatter");
@@ -68,6 +76,19 @@ function updateTargetMarker() {
 function setMode(mode) {
   state.mode = mode;
   updateTargetMarker();
+}
+
+function clearCanvas() {
+  context.save();
+  context.setTransform(1, 0, 0, 1, 0, 0);
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.restore();
+}
+
+function setCameraBackground(enabled) {
+  state.cameraBackground = Boolean(enabled && state.cameraEnabled);
+  appShell.classList.toggle("camera-background", state.cameraBackground);
+  clearCanvas();
 }
 
 const controls = createControls({
@@ -92,6 +113,10 @@ const controls = createControls({
   async onCameraToggle() {
     const enabled = await handTracking.toggle();
     state.cameraEnabled = enabled;
+    if (!enabled) {
+      setCameraBackground(false);
+      controls.setCameraBackground(false);
+    }
     resizeCanvas();
     if (enabled) {
       controls.showToast("Camera gestures enabled.");
@@ -99,6 +124,29 @@ const controls = createControls({
       controls.showToast("Camera gestures disabled.");
     }
     return enabled;
+  },
+  async onCameraBackgroundToggle(enabled) {
+    if (!enabled) {
+      setCameraBackground(false);
+      controls.showToast("Web background enabled.");
+      return false;
+    }
+
+    controls.setCameraStatus("Starting camera");
+    if (!state.cameraEnabled) {
+      const cameraEnabled = await handTracking.toggle();
+      state.cameraEnabled = cameraEnabled;
+      controls.setCameraEnabled(cameraEnabled);
+      resizeCanvas();
+      if (!cameraEnabled) {
+        setCameraBackground(false);
+        return false;
+      }
+    }
+
+    setCameraBackground(true);
+    controls.showToast("Live camera background enabled.");
+    return true;
   }
 });
 
@@ -117,6 +165,7 @@ const handTracking = new HandTrackingController({
   },
   onGesture(gesture) {
     controls.setGesture(gesture);
+    gestureCloud.setGesture(gesture);
   },
   onStatus(message) {
     controls.setCameraStatus(message);
@@ -126,6 +175,12 @@ const handTracking = new HandTrackingController({
     controls.showToast(error.message || "Camera input is unavailable.");
   }
 });
+
+if ("requestIdleCallback" in window) {
+  window.requestIdleCallback(() => handTracking.preload(), { timeout: 1800 });
+} else {
+  window.setTimeout(() => handTracking.preload(), 700);
+}
 
 function setTargetFromEvent(event) {
   const rect = canvas.getBoundingClientRect();
@@ -147,21 +202,32 @@ window.addEventListener("resize", () => {
   applyBoidParameters();
 });
 
-function modeColor() {
+function modeRgb() {
   if (state.mode === "gather") {
-    return "#ffc857";
+    return [217, 159, 50];
   }
   if (state.mode === "scatter") {
-    return "#ff6b6b";
+    return [220, 77, 77];
   }
   if (state.mode === "idle") {
-    return "#b8c0bc";
+    return [166, 176, 172];
   }
-  return "#7ff0c4";
+  return [69, 214, 160];
+}
+
+function modeColor() {
+  const [red, green, blue] = modeRgb();
+  return `rgb(${red}, ${green}, ${blue})`;
+}
+
+function modeRgba(alpha) {
+  const [red, green, blue] = modeRgb();
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
 }
 
 function addScatterParticles() {
-  for (let index = 0; index < 5; index += 1) {
+  const count = state.cameraBackground ? 2 : 3;
+  for (let index = 0; index < count; index += 1) {
     const angle = Math.random() * Math.PI * 2;
     const speed = 1.4 + Math.random() * 2.8;
     state.particles.push({
@@ -176,7 +242,74 @@ function addScatterParticles() {
   }
 }
 
+function drawLiveCameraFrame() {
+  context.fillStyle = "#050607";
+  context.fillRect(0, 0, state.width, state.height);
+
+  if (cameraPreview.readyState < 2 || !cameraPreview.videoWidth || !cameraPreview.videoHeight) {
+    const waiting = context.createRadialGradient(
+      state.width * 0.5,
+      state.height * 0.48,
+      0,
+      state.width * 0.5,
+      state.height * 0.48,
+      Math.max(state.width, state.height) * 0.72
+    );
+    waiting.addColorStop(0, "rgba(48, 72, 76, 0.28)");
+    waiting.addColorStop(1, "rgba(5, 6, 7, 1)");
+    context.fillStyle = waiting;
+    context.fillRect(0, 0, state.width, state.height);
+    return;
+  }
+
+  const crop = calculateCoverCrop(
+    cameraPreview.videoWidth,
+    cameraPreview.videoHeight,
+    state.width,
+    state.height
+  );
+
+  context.save();
+  context.imageSmoothingEnabled = true;
+  context.translate(state.width, 0);
+  context.scale(-1, 1);
+  context.drawImage(
+    cameraPreview,
+    crop.x,
+    crop.y,
+    crop.width,
+    crop.height,
+    0,
+    0,
+    state.width,
+    state.height
+  );
+  context.restore();
+
+  context.fillStyle = "rgba(0, 0, 0, 0.16)";
+  context.fillRect(0, 0, state.width, state.height);
+
+  const vignette = context.createRadialGradient(
+    state.width * 0.52,
+    state.height * 0.46,
+    Math.min(state.width, state.height) * 0.18,
+    state.width * 0.52,
+    state.height * 0.46,
+    Math.max(state.width, state.height) * 0.72
+  );
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(1, "rgba(0, 0, 0, 0.36)");
+  context.fillStyle = vignette;
+  context.fillRect(0, 0, state.width, state.height);
+}
+
 function drawBackground(delta) {
+  if (state.cameraBackground) {
+    context.globalCompositeOperation = "source-over";
+    drawLiveCameraFrame();
+    return;
+  }
+
   context.globalCompositeOperation = "source-over";
   context.fillStyle = `rgba(16, 17, 19, ${Math.min(0.32, 0.13 + delta * 0.06)})`;
   context.fillRect(0, 0, state.width, state.height);
@@ -207,6 +340,59 @@ function drawTarget() {
     context.arc(state.target.x, state.target.y, 118, 0, Math.PI * 2);
     context.fill();
   }
+  context.restore();
+}
+
+function drawFlowField() {
+  const radius = state.mode === "scatter" ? 280 : 360;
+  const baseAlpha = state.cameraBackground ? 0.035 : 0.055;
+
+  context.save();
+  context.globalCompositeOperation = "lighter";
+  context.lineCap = "round";
+  for (let index = 0; index < boids.length; index += 3) {
+    const boid = boids[index];
+    const distance = boid.position.distanceTo(state.target);
+    if (distance > radius) {
+      continue;
+    }
+
+    const influence = 1 - distance / radius;
+    context.strokeStyle = modeRgba(baseAlpha + influence * 0.08);
+    context.lineWidth = 0.55 + influence * 1.25;
+    context.beginPath();
+    context.moveTo(
+      boid.position.x + boid.velocity.x * 1.5,
+      boid.position.y + boid.velocity.y * 1.5
+    );
+    context.lineTo(state.target.x, state.target.y);
+    context.stroke();
+  }
+  context.restore();
+}
+
+function drawBoidTrail(boid, index) {
+  const angle = Math.atan2(boid.velocity.y, boid.velocity.x);
+  const speed = boid.velocity.magnitude();
+  const distance = boid.position.distanceTo(state.target);
+  const influenceRadius = state.mode === "scatter" ? 280 : 420;
+  const influence = Math.max(0, 1 - distance / influenceRadius);
+  const length = 18 + speed * 5.4 + influence * 24;
+  const curve = Math.sin(index * 0.83 + performance.now() * 0.0012) * (5 + influence * 11);
+  const tailX = boid.position.x - Math.cos(angle) * length;
+  const tailY = boid.position.y - Math.sin(angle) * length;
+  const controlX = boid.position.x - Math.cos(angle) * length * 0.45 - Math.sin(angle) * curve;
+  const controlY = boid.position.y - Math.sin(angle) * length * 0.45 + Math.cos(angle) * curve;
+
+  context.save();
+  context.globalCompositeOperation = "lighter";
+  context.lineCap = "round";
+  context.strokeStyle = modeRgba((state.cameraBackground ? 0.16 : 0.2) + influence * 0.18);
+  context.lineWidth = 0.8 + influence * 1.7;
+  context.beginPath();
+  context.moveTo(tailX, tailY);
+  context.quadraticCurveTo(controlX, controlY, boid.position.x, boid.position.y);
+  context.stroke();
   context.restore();
 }
 
@@ -256,7 +442,7 @@ function drawParticles() {
   context.globalCompositeOperation = "lighter";
   for (const particle of state.particles) {
     const alpha = Math.max(0, particle.life / particle.maxLife);
-    context.globalAlpha = alpha * 0.58;
+    context.globalAlpha = alpha * (state.cameraBackground ? 0.32 : 0.42);
     context.fillStyle = particle.color;
     context.beginPath();
     context.arc(particle.x, particle.y, 2.2 + alpha * 2.6, 0, Math.PI * 2);
@@ -293,12 +479,16 @@ function frame(now) {
   });
 
   drawBackground(delta);
+  drawFlowField();
   drawTarget();
   updateParticles(delta);
   drawParticles();
-  for (const boid of boids) {
+  gestureCloud.update(delta);
+  for (const [index, boid] of boids.entries()) {
+    drawBoidTrail(boid, index);
     drawBoid(boid);
   }
+  gestureCloud.draw(context, now);
   updateFps(now);
 
   window.requestAnimationFrame(frame);

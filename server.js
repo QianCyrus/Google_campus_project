@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const rootDir = fileURLToPath(new URL(".", import.meta.url));
 const publicDir = fileURLToPath(new URL("./public/", import.meta.url));
 const port = Number.parseInt(process.env.PORT || "8080", 10);
+let activeServer = null;
 
 const contentTypes = {
   ".css": "text/css; charset=utf-8",
@@ -36,11 +37,9 @@ async function startExpressServer() {
 
     app.use(express.static(publicDir, {
       etag: true,
-      maxAge: "1h",
-      setHeaders(res, path) {
-        if (path.endsWith(".html")) {
-          res.setHeader("Cache-Control", "no-cache");
-        }
+      maxAge: 0,
+      setHeaders(res) {
+        res.setHeader("Cache-Control", "no-cache");
       }
     }));
 
@@ -48,7 +47,7 @@ async function startExpressServer() {
       res.sendFile(join(publicDir, "index.html"));
     });
 
-    app.listen(port, () => {
+    activeServer = app.listen(port, () => {
       console.log(`Gesture Boids Simulator listening on http://localhost:${port}`);
     });
 
@@ -62,7 +61,7 @@ async function startExpressServer() {
 }
 
 function startFallbackServer() {
-  const server = createServer((req, res) => {
+  activeServer = createServer((req, res) => {
     const requestPath = new URL(req.url || "/", `http://${req.headers.host}`).pathname;
     const decodedPath = decodeURIComponent(requestPath);
     const normalizedPath = normalize(decodedPath).replace(/^(\.\.[/\\])+/, "");
@@ -77,9 +76,7 @@ function startFallbackServer() {
       res.setHeader(key, value);
     }
     res.setHeader("Content-Type", contentTypes[extension] || "application/octet-stream");
-    if (extension === ".html") {
-      res.setHeader("Cache-Control", "no-cache");
-    }
+    res.setHeader("Cache-Control", "no-cache");
 
     createReadStream(resolvedPath)
       .on("error", () => {
@@ -89,7 +86,7 @@ function startFallbackServer() {
       .pipe(res);
   });
 
-  server.listen(port, () => {
+  activeServer.listen(port, () => {
     console.log(`Gesture Boids Simulator listening on http://localhost:${port}`);
     console.log("Express is not installed locally; using the built-in static server fallback.");
   });

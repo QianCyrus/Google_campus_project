@@ -2,9 +2,15 @@ const MEDIAPIPE_VERSION = "0.10.14";
 const TASKS_VISION_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.mjs`;
 const WASM_BASE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
-const DEFAULT_TRACKING_FPS = 12;
-const MODE_STABLE_FRAMES = 2;
-const TARGET_SMOOTHING = 0.38;
+const DEFAULT_TRACKING_FPS = 24;
+const MODE_STABLE_FRAMES = 1;
+const TARGET_SMOOTHING = 0.58;
+const BOID_MODES = new Set(["follow", "gather", "scatter", "idle"]);
+const COLLIDER_LANDMARKS = [0, 4, 8, 12, 16, 20];
+
+function landmarkDistance(left, right) {
+  return Math.hypot(left.x - right.x, left.y - right.y);
+}
 
 function fingerIsExtended(landmarks, tipIndex, pipIndex, wristIndex = 0) {
   const tip = landmarks[tipIndex];
@@ -15,7 +21,46 @@ function fingerIsExtended(landmarks, tipIndex, pipIndex, wristIndex = 0) {
   return tipDistance > pipDistance * 1.12;
 }
 
+function thumbIsUp(landmarks) {
+  const thumbTip = landmarks[4];
+  const thumbIp = landmarks[3];
+  const thumbMcp = landmarks[2];
+  const wrist = landmarks[0];
+  const foldedFingers = [8, 12, 16, 20].every((tipIndex) => {
+    const pipIndex = tipIndex - 2;
+    return landmarkDistance(landmarks[tipIndex], wrist) < landmarkDistance(landmarks[pipIndex], wrist) * 1.2;
+  });
+
+  return foldedFingers
+    && thumbTip.y < thumbIp.y - 0.025
+    && thumbIp.y < thumbMcp.y + 0.025
+    && thumbTip.y < wrist.y - 0.08;
+}
+
+function handsFormHeart(landmarkSets) {
+  if (landmarkSets.length < 2) {
+    return false;
+  }
+
+  const [left, right] = landmarkSets;
+  const indexDistance = landmarkDistance(left[8], right[8]);
+  const thumbDistance = landmarkDistance(left[4], right[4]);
+  const leftPinch = landmarkDistance(left[4], left[8]);
+  const rightPinch = landmarkDistance(right[4], right[8]);
+  const verticalSeparation = Math.abs(((left[8].y + right[8].y) / 2) - ((left[4].y + right[4].y) / 2));
+
+  return indexDistance < 0.2
+    && thumbDistance < 0.22
+    && leftPinch < 0.34
+    && rightPinch < 0.34
+    && verticalSeparation > 0.035;
+}
+
 export function classifyGesture(landmarks) {
+  if (thumbIsUp(landmarks)) {
+    return "thanks";
+  }
+
   const extended = {
     index: fingerIsExtended(landmarks, 8, 6),
     middle: fingerIsExtended(landmarks, 12, 10),
@@ -36,14 +81,39 @@ export function classifyGesture(landmarks) {
   return "follow";
 }
 
+export function classifyHands(landmarkSets = []) {
+  if (handsFormHeart(landmarkSets)) {
+    return "heart";
+  }
+
+  if (landmarkSets.length === 0) {
+    return "none";
+  }
+
+  return classifyGesture(landmarkSets[0]);
+}
+
 export class HandTrackingController {
-  constructor({ canvas, videoElement, onTarget, onMode, onGesture, onStatus, onError, trackingFps = DEFAULT_TRACKING_FPS }) {
+  constructor({
+    canvas,
+    videoElement,
+    onTarget,
+    onMode,
+    onGesture,
+    onStatus,
+    onHands,
+    onStreamChange,
+    onError,
+    trackingFps = DEFAULT_TRACKING_FPS
+  }) {
     this.canvas = canvas;
     this.video = videoElement ?? document.createElement("video");
     this.onTarget = onTarget;
     this.onMode = onMode;
     this.onGesture = onGesture;
     this.onStatus = onStatus;
+    this.onHands = onHands;
+    this.onStreamChange = onStreamChange;
     this.onError = onError;
     this.trackingFps = trackingFps;
     this.video.setAttribute("playsinline", "");
@@ -52,6 +122,8 @@ export class HandTrackingController {
     this.stream = null;
     this.handLandmarker = null;
     this.running = false;
+    this.modelLoading = false;
+    this.modelPromise = null;
     this.lastVideoTime = -1;
     this.lastDetectTime = 0;
     this.frameHandle = 0;
@@ -76,21 +148,17 @@ export class HandTrackingController {
     this.onStatus?.("Requesting camera");
     this.stream = await navigator.mediaDevices.getUserMedia({
       video: {
-        width: { ideal: 320, max: 640 },
-        height: { ideal: 240, max: 480 },
-        frameRate: { ideal: 24, max: 30 },
+        width: { ideal: 960, max: 1280 },
+        height: { ideal: 540, max: 720 },
+        frameRate: { ideal: 30, max: 30 },
         facingMode: "user"
       },
       audio: false
     });
 
     this.video.srcObject = this.stream;
+    this.onStreamChange?.(this.stream);
     await this.video.play();
-
-    this.onStatus?.("Loading hand model");
-    const { FilesetResolver, HandLandmarker } = await import(TASKS_VISION_URL);
-    const vision = await FilesetResolver.forVisionTasks(WASM_BASE_URL);
-    this.handLandmarker = await this.createHandLandmarker(HandLandmarker, vision);
 
     this.running = true;
     this.lastVideoTime = -1;
@@ -99,8 +167,61 @@ export class HandTrackingController {
     this.pendingMode = null;
     this.pendingModeFrames = 0;
     this.stableMode = null;
-    this.onStatus?.("Tracking hand");
-    this.detect();
+    if (this.handLandmarker) {
+      this.onStatus?.("Tracking hand");
+      this.startDetecting();
+    } else {
+      this.onStatus?.("Camera active; loading hand model");
+      this.loadHandModel();
+    }
+  }
+
+  preload() {
+    this.loadHandModel({ silent: true });
+  }
+
+  startDetecting() {
+    if (!this.running || !this.handLandmarker) {
+      return;
+    }
+
+    window.cancelAnimationFrame(this.frameHandle);
+    this.frameHandle = window.requestAnimationFrame((time) => this.detect(time));
+  }
+
+  async loadHandModel({ silent = false } = {}) {
+    if (this.modelLoading || this.handLandmarker) {
+      if (this.handLandmarker) {
+        this.startDetecting();
+      }
+      return;
+    }
+
+    this.modelLoading = true;
+    this.modelPromise ??= (async () => {
+      const { FilesetResolver, HandLandmarker } = await import(TASKS_VISION_URL);
+      const vision = await FilesetResolver.forVisionTasks(WASM_BASE_URL);
+      return this.createHandLandmarker(HandLandmarker, vision);
+    })();
+
+    try {
+      this.handLandmarker = await this.modelPromise;
+      if (this.running) {
+        this.onStatus?.("Tracking hand");
+        this.startDetecting();
+      }
+    } catch (error) {
+      if (this.running) {
+        this.lastError = error;
+        this.onStatus?.("Camera active; hand model unavailable");
+        this.onError?.(new Error("Hand model could not load. Camera background still works."));
+      } else if (!silent) {
+        this.lastError = error;
+      }
+    } finally {
+      this.modelLoading = false;
+      this.modelPromise = null;
+    }
   }
 
   async createHandLandmarker(HandLandmarker, vision) {
@@ -110,7 +231,10 @@ export class HandTrackingController {
         delegate: "GPU"
       },
       runningMode: "VIDEO",
-      numHands: 1
+      numHands: 2,
+      minHandDetectionConfidence: 0.45,
+      minHandPresenceConfidence: 0.45,
+      minTrackingConfidence: 0.45
     };
 
     try {
@@ -128,6 +252,7 @@ export class HandTrackingController {
 
   stop() {
     this.running = false;
+    this.modelLoading = false;
     window.cancelAnimationFrame(this.frameHandle);
     this.handLandmarker?.close();
     this.handLandmarker = null;
@@ -136,11 +261,13 @@ export class HandTrackingController {
     }
     this.stream = null;
     this.video.srcObject = null;
+    this.onStreamChange?.(null);
     this.smoothedTarget = null;
     this.pendingMode = null;
     this.pendingModeFrames = 0;
     this.stableMode = null;
     this.onGesture?.("none");
+    this.onHands?.([]);
     this.onStatus?.("Camera idle");
   }
 
@@ -176,7 +303,9 @@ export class HandTrackingController {
     }
 
     this.stableMode = mode;
-    this.onMode?.(mode);
+    if (BOID_MODES.has(mode)) {
+      this.onMode?.(mode);
+    }
   }
 
   emitTarget(fingertip) {
@@ -198,6 +327,23 @@ export class HandTrackingController {
     this.onTarget?.({ ...this.smoothedTarget, source: "camera" });
   }
 
+  emitHands(landmarkSets) {
+    const rect = this.canvas.getBoundingClientRect();
+    const points = [];
+
+    for (const landmarks of landmarkSets) {
+      for (const index of COLLIDER_LANDMARKS) {
+        const landmark = landmarks[index];
+        points.push({
+          x: (1 - landmark.x) * rect.width,
+          y: landmark.y * rect.height
+        });
+      }
+    }
+
+    this.onHands?.(points);
+  }
+
   detect(now = performance.now()) {
     if (!this.running || !this.handLandmarker) {
       return;
@@ -214,17 +360,20 @@ export class HandTrackingController {
       this.lastDetectTime = now;
       this.lastVideoTime = this.video.currentTime;
       const result = this.handLandmarker.detectForVideo(this.video, performance.now());
-      const landmarks = result.landmarks?.[0];
+      const landmarkSets = result.landmarks ?? [];
+      const landmarks = landmarkSets[0];
 
       if (landmarks) {
         const fingertip = landmarks[8];
-        const mode = classifyGesture(landmarks);
+        const mode = classifyHands(landmarkSets);
 
         this.emitTarget(fingertip);
+        this.emitHands(landmarkSets);
         this.updateStableMode(mode);
         this.onStatus?.("Tracking hand");
       } else {
         this.onGesture?.("none");
+        this.onHands?.([]);
         this.onStatus?.("No hand detected");
       }
     }

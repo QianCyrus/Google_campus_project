@@ -9,7 +9,9 @@ const GESTURE_LABELS = {
   none: "None",
   follow: "Point",
   gather: "Closed",
-  scatter: "Open"
+  scatter: "Open",
+  heart: "Heart",
+  thanks: "Thank you"
 };
 
 export function createControls({
@@ -18,7 +20,8 @@ export function createControls({
   onBirdCountChange,
   onSpeedChange,
   onRadiusChange,
-  onCameraToggle
+  onCameraToggle,
+  onCameraBackgroundToggle
 }) {
   const modeButtons = [...document.querySelectorAll(".mode-button")];
   const modeLabel = document.querySelector("#modeLabel");
@@ -28,6 +31,7 @@ export function createControls({
   const speedInput = document.querySelector("#speed");
   const radiusInput = document.querySelector("#radius");
   const cameraButton = document.querySelector("#cameraButton");
+  const backgroundButton = document.querySelector("#backgroundButton");
   const cameraPanel = document.querySelector("#cameraPanel");
   const cameraStatus = document.querySelector("#cameraStatus");
   const gestureLabel = document.querySelector("#gestureLabel");
@@ -49,6 +53,15 @@ export function createControls({
     cameraButton.textContent = enabled ? "Camera On" : "Camera Off";
     cameraButton.setAttribute("aria-pressed", String(enabled));
     cameraPanel?.classList.toggle("active", enabled);
+    if (!enabled) {
+      setCameraBackground(false);
+    }
+  }
+
+  function setCameraBackground(enabled) {
+    backgroundButton.classList.toggle("enabled", enabled);
+    backgroundButton.textContent = enabled ? "Web BG" : "Camera BG";
+    backgroundButton.setAttribute("aria-pressed", String(enabled));
   }
 
   function setCameraStatus(message) {
@@ -104,7 +117,29 @@ export function createControls({
     try {
       const enabled = await onCameraToggle?.();
       setCameraEnabled(Boolean(enabled));
+    } catch (error) {
+      const message = error?.message || "Camera input is unavailable.";
+      setCameraStatus(message);
+      showToast(message);
+      setCameraEnabled(false);
     } finally {
+      cameraButton.disabled = false;
+    }
+  });
+
+  backgroundButton.addEventListener("click", async () => {
+    backgroundButton.disabled = true;
+    cameraButton.disabled = true;
+    try {
+      const enabled = await onCameraBackgroundToggle?.(!backgroundButton.classList.contains("enabled"));
+      setCameraBackground(Boolean(enabled));
+    } catch (error) {
+      const message = error?.message || "Camera background is unavailable.";
+      setCameraStatus(message);
+      showToast(message);
+      setCameraBackground(false);
+    } finally {
+      backgroundButton.disabled = false;
       cameraButton.disabled = false;
     }
   });
@@ -129,12 +164,14 @@ export function createControls({
   setMode(state.mode);
   setBirdCount(state.birdCount);
   setCameraEnabled(false);
+  setCameraBackground(false);
   setCameraStatus("Camera idle");
   setGesture("none");
 
   return {
     setMode,
     setCameraEnabled,
+    setCameraBackground,
     setCameraStatus,
     setGesture,
     setBirdCount,

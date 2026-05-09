@@ -12,8 +12,10 @@
 | TC-8 | Parameter tuning | Change Speed and Radius sliders | Movement changes without page errors |
 | TC-9 | Camera permission | Click Camera Off | Browser asks for camera permission on HTTPS or localhost |
 | TC-10 | Gesture fallback | Deny camera permission | App continues working with mouse and keyboard |
-| TC-11 | Unit tests | Run `npm test` | Boids algorithm tests pass |
-| TC-12 | Cloud Run | Open deployed URL | App loads over HTTPS |
+| TC-11 | Live camera background | Click Camera BG and allow permission | Canvas switches to a clear mirrored camera background |
+| TC-12 | Gesture feedback | Show point, fist, open palm, heart, or thumbs-up | HUD gesture label and particle cloud update |
+| TC-13 | Unit tests | Run `npm test` | Automated tests pass |
+| TC-14 | Cloud Run | Open deployed URL | App loads over HTTPS |
 
 ## Automated Tests
 

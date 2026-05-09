@@ -54,7 +54,7 @@ test("GestureParticleCloud uses text particles for hand gestures", () => {
   cloud.setGesture("heart");
   cloud.setGesture("thanks");
 
-  assert.deepEqual(renderedTexts, ["POINT", "CLOSED", "OPEN", "HEART", "THANK YOU!"]);
+  assert.deepEqual(renderedTexts, ["POINT", "CLOSED", "OPEN", "心", "THANK YOU!"]);
   assert.ok(cloud.particles.length > 0);
   assert.ok(cloud.particles.every((particle) => particle.size >= 2.2));
 });

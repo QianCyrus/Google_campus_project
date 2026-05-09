@@ -6,14 +6,14 @@ const GESTURE_TEXT = {
   follow: "POINT",
   gather: "CLOSED",
   scatter: "OPEN",
-  heart: "HEART",
+  heart: "心",
   thanks: "THANK YOU!"
 };
 const SHAPE_COLORS = {
   follow: "#7ff0c4",
   gather: "#ffc857",
   scatter: "#ff6b6b",
-  heart: "#ff7890",
+  heart: "#d83f63",
   thanks: "#f8faf7"
 };
 

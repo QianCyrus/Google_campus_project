@@ -10,7 +10,7 @@ const GESTURE_LABELS = {
   follow: "Point",
   gather: "Closed",
   scatter: "Open",
-  heart: "Heart",
+  heart: "心",
   thanks: "Thank you"
 };
 

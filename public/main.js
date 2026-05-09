@@ -4,16 +4,22 @@ import { HandTrackingController } from "./handTracking.js";
 
 const canvas = document.querySelector("#flockCanvas");
 const targetMarker = document.querySelector("#targetMarker");
+const cameraPreview = document.querySelector("#cameraPreview");
 const context = canvas.getContext("2d", { alpha: false });
+
+const DEFAULT_BIRD_COUNT = 80;
+const DPR_CAP = 1.5;
+const CAMERA_DPR_CAP = 1.15;
 
 const state = {
   width: window.innerWidth,
   height: window.innerHeight,
-  dpr: Math.min(window.devicePixelRatio || 1, 2),
+  dpr: Math.min(window.devicePixelRatio || 1, DPR_CAP),
   mode: "follow",
-  birdCount: 140,
+  birdCount: DEFAULT_BIRD_COUNT,
   maxSpeed: 3.2,
   perceptionRadius: 70,
+  cameraEnabled: false,
   target: new Vector(window.innerWidth * 0.52, window.innerHeight * 0.56),
   lastFrame: performance.now(),
   fpsTime: performance.now(),
@@ -29,7 +35,7 @@ let boids = createFlock(state.birdCount, state.width, state.height, {
 function resizeCanvas() {
   state.width = window.innerWidth;
   state.height = window.innerHeight;
-  state.dpr = Math.min(window.devicePixelRatio || 1, 2);
+  state.dpr = Math.min(window.devicePixelRatio || 1, state.cameraEnabled ? CAMERA_DPR_CAP : DPR_CAP);
   canvas.width = Math.floor(state.width * state.dpr);
   canvas.height = Math.floor(state.height * state.dpr);
   canvas.style.width = `${state.width}px`;
@@ -85,13 +91,20 @@ const controls = createControls({
   },
   async onCameraToggle() {
     const enabled = await handTracking.toggle();
-    controls.showToast(enabled ? "Camera gestures enabled." : "Camera gestures disabled.");
+    state.cameraEnabled = enabled;
+    resizeCanvas();
+    if (enabled) {
+      controls.showToast("Camera gestures enabled.");
+    } else if (!handTracking.lastError) {
+      controls.showToast("Camera gestures disabled.");
+    }
     return enabled;
   }
 });
 
 const handTracking = new HandTrackingController({
   canvas,
+  videoElement: cameraPreview,
   onTarget({ x, y }) {
     state.target.x = x;
     state.target.y = y;
@@ -102,7 +115,14 @@ const handTracking = new HandTrackingController({
       controls.setMode(mode);
     }
   },
+  onGesture(gesture) {
+    controls.setGesture(gesture);
+  },
+  onStatus(message) {
+    controls.setCameraStatus(message);
+  },
   onError(error) {
+    controls.setCameraStatus(error.message || "Camera input is unavailable.");
     controls.showToast(error.message || "Camera input is unavailable.");
   }
 });
@@ -194,14 +214,17 @@ function drawBoid(boid) {
   const angle = Math.atan2(boid.velocity.y, boid.velocity.x);
   const size = boid.size;
   const color = modeColor();
+  const useGlow = !state.cameraEnabled && state.birdCount <= 100;
 
   context.save();
   context.translate(boid.position.x, boid.position.y);
   context.rotate(angle);
   context.globalCompositeOperation = "lighter";
   context.fillStyle = color;
-  context.shadowColor = color;
-  context.shadowBlur = 8;
+  if (useGlow) {
+    context.shadowColor = color;
+    context.shadowBlur = 6;
+  }
   context.beginPath();
   context.moveTo(size * 1.35, 0);
   context.lineTo(-size * 0.85, -size * 0.52);

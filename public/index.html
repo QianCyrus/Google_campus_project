@@ -13,7 +13,7 @@
           <h1>Gesture Boids Simulator</h1>
           <div class="metrics" aria-live="polite">
             <span>Mode <strong id="modeLabel">Follow</strong></span>
-            <span>Birds <strong id="birdCountLabel">140</strong></span>
+            <span>Birds <strong id="birdCountLabel">80</strong></span>
             <span>FPS <strong id="fpsLabel">--</strong></span>
           </div>
         </div>
@@ -30,7 +30,7 @@
 
           <label class="slider-row">
             <span>Birds</span>
-            <input id="birdCount" type="range" min="40" max="220" step="10" value="140">
+            <input id="birdCount" type="range" min="30" max="160" step="10" value="80">
           </label>
 
           <label class="slider-row">
@@ -47,6 +47,13 @@
 
       <canvas id="flockCanvas" aria-label="Boids flock simulation"></canvas>
       <div id="targetMarker" class="target-marker" aria-hidden="true"></div>
+      <aside id="cameraPanel" class="camera-panel" aria-label="Camera tracking status">
+        <video id="cameraPreview" muted playsinline></video>
+        <div class="camera-meta" aria-live="polite">
+          <span id="cameraStatus">Camera idle</span>
+          <strong id="gestureLabel">None</strong>
+        </div>
+      </aside>
       <div id="toast" class="toast" role="status" aria-live="polite"></div>
     </main>
 

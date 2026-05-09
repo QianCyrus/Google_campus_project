@@ -5,6 +5,13 @@ const MODE_LABELS = {
   scatter: "Scatter"
 };
 
+const GESTURE_LABELS = {
+  none: "None",
+  follow: "Point",
+  gather: "Closed",
+  scatter: "Open"
+};
+
 export function createControls({
   state,
   onModeChange,
@@ -21,6 +28,9 @@ export function createControls({
   const speedInput = document.querySelector("#speed");
   const radiusInput = document.querySelector("#radius");
   const cameraButton = document.querySelector("#cameraButton");
+  const cameraPanel = document.querySelector("#cameraPanel");
+  const cameraStatus = document.querySelector("#cameraStatus");
+  const gestureLabel = document.querySelector("#gestureLabel");
   const toast = document.querySelector("#toast");
   let toastTimeout = 0;
 
@@ -38,6 +48,19 @@ export function createControls({
     cameraButton.classList.toggle("enabled", enabled);
     cameraButton.textContent = enabled ? "Camera On" : "Camera Off";
     cameraButton.setAttribute("aria-pressed", String(enabled));
+    cameraPanel?.classList.toggle("active", enabled);
+  }
+
+  function setCameraStatus(message) {
+    if (cameraStatus) {
+      cameraStatus.textContent = message;
+    }
+  }
+
+  function setGesture(gesture) {
+    if (gestureLabel) {
+      gestureLabel.textContent = GESTURE_LABELS[gesture] ?? gesture;
+    }
   }
 
   function setBirdCount(count) {
@@ -106,10 +129,14 @@ export function createControls({
   setMode(state.mode);
   setBirdCount(state.birdCount);
   setCameraEnabled(false);
+  setCameraStatus("Camera idle");
+  setGesture("none");
 
   return {
     setMode,
     setCameraEnabled,
+    setCameraStatus,
+    setGesture,
     setBirdCount,
     setFps,
     showToast

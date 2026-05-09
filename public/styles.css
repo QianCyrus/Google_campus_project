@@ -245,6 +245,57 @@ input[type="range"] {
   opacity: 0.35;
 }
 
+.camera-panel {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 3;
+  width: min(240px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(17, 18, 21, 0.9);
+  box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+}
+
+#cameraPreview {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #050607;
+  transform: scaleX(-1);
+}
+
+.camera-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.camera-meta span,
+.camera-meta strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-meta strong {
+  color: var(--amber);
+  font-size: 0.88rem;
+}
+
+.camera-panel.active {
+  border-color: rgba(255, 200, 87, 0.56);
+}
+
 .toast {
   position: absolute;
   left: 50%;
@@ -288,6 +339,10 @@ input[type="range"] {
   .utility-button {
     width: 100%;
   }
+
+  .camera-panel {
+    width: 180px;
+  }
 }
 
 @media (max-width: 560px) {
@@ -318,5 +373,17 @@ input[type="range"] {
 
   h1 {
     font-size: 1.2rem;
+  }
+
+  .camera-panel {
+    right: 10px;
+    bottom: 10px;
+    width: 142px;
+  }
+
+  .camera-meta {
+    min-height: 34px;
+    padding: 7px 8px;
+    font-size: 0.72rem;
   }
 }

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Gesture Boids Simulator</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hud" aria-label="Simulation controls">
+        <div class="brand-block">
+          <h1>Gesture Boids Simulator</h1>
+          <div class="metrics" aria-live="polite">
+            <span>Mode <strong id="modeLabel">Follow</strong></span>
+            <span>Birds <strong id="birdCountLabel">140</strong></span>
+            <span>FPS <strong id="fpsLabel">--</strong></span>
+          </div>
+        </div>
+
+        <div class="control-grid">
+          <div class="segmented" role="group" aria-label="Mode">
+            <button class="mode-button" data-mode="idle" type="button">Idle</button>
+            <button class="mode-button active" data-mode="follow" type="button">Follow</button>
+            <button class="mode-button" data-mode="gather" type="button">Gather</button>
+            <button class="mode-button" data-mode="scatter" type="button">Scatter</button>
+          </div>
+
+          <button id="cameraButton" class="utility-button" type="button">Camera Off</button>
+
+          <label class="slider-row">
+            <span>Birds</span>
+            <input id="birdCount" type="range" min="40" max="220" step="10" value="140">
+          </label>
+
+          <label class="slider-row">
+            <span>Speed</span>
+            <input id="speed" type="range" min="1.5" max="5.2" step="0.1" value="3.2">
+          </label>
+
+          <label class="slider-row">
+            <span>Radius</span>
+            <input id="radius" type="range" min="35" max="120" step="5" value="70">
+          </label>
+        </div>
+      </section>
+
+      <canvas id="flockCanvas" aria-label="Boids flock simulation"></canvas>
+      <div id="targetMarker" class="target-marker" aria-hidden="true"></div>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </main>
+
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>
